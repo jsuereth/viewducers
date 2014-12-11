@@ -6,16 +6,26 @@ import scala.collection.GenTraversableOnce
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * A transformer over Folds.   We use the correctly hype marketed name.
+ * A transformer over Folds.  Instead of calling it a "fold transformer" or "fold mapper" or anything so blaise, we'll
+ * use a nicely marketed term which doesn't convey the meaning/implications immediately, but does well with SEO.
  *
- * Note:  A transducer is ALMOST a straight function, but we need to leave the Accumulator type unbound.  This
- *        simple trick allows us to compose these things.
+ * Note:  A transducer is ALMOST a straight function, but we need to leave the Accumulator type unbound.
+ *        In scala, these unbound universal types can be expressed via abstract classes + polymorphic inheritance.
+ *        There is no convenient "lambda" syntax for these types, but we attempt to give the best we can for this concept.
  */
 sealed abstract class Transducer[-A, +B] {
-  // Note the order of composition is inverted from what you'd expect.
+  /** Alter an existing fold function as specified by this transducer. */
   def apply[Accumulator](in: Fold[Accumulator, B]): Fold[Accumulator, A]
 
-  // TODO - Figure out how to implement this method with more meaning:
+  /** Currently this method is in a beta-debugging mode.  The goal is for it to:
+    *
+    * - Flatten any Tree-like nesting structure so we have a linked-list structure
+    * - Join together any operations which can be (map then flatMap e.g.)
+    * - Remove any placeholder Transducers (identity)
+    * - Reorder/Join limiting operations (e.g. multiple Slice operations)
+    *
+    * @return A new transducer with more optimal execution behaior
+    */
   final def optimise: Transducer[A, B] =
     this match {
       // TODO - we need to peel off the layers of JoinedTransducers and create Seq(ops) if we can, then optimise via the entire sequence.
@@ -27,6 +37,10 @@ sealed abstract class Transducer[-A, +B] {
       case other => other
     }
 
+  /** An internal mechanism to convert a transducer into a Sequence of transducer operations.
+    *
+    * This is step one when optimising a transducer.
+    */
   private def toSeqOps: Seq[Transducer[_,_]] = {
     def toSeqOpsImpl(acc: Seq[Transducer[_, _]], next: Transducer[_, _]): Seq[Transducer[_, _]] =
       next match {
@@ -37,19 +51,30 @@ sealed abstract class Transducer[-A, +B] {
     toSeqOpsImpl(Vector.empty, this)
   }
 
-  // TODO - maybe we move this into an extension method mechanism instead...
+  /** Run another transducer after this transducer. */
   final def andThen[C](other: Transducer[B,C]): Transducer[A,C] = new JoinedTransducer(this, other)
 }
+/** Helper methods to create simple transducers. */
 object Transducer {
+  /** A transducer which returns the original fold. */
   def identity[A]: Transducer[A,A] = IdentityTransducer[A]()
+  /* A transducer which maps elements in the fold to new elements. */
   def map[A,B](f: A => B): Transducer[A,B] = MapTransducer(f)
+  /* A transducers which removes elements from the fold. */
   def filter[A](f: A => Boolean): Transducer[A,A] = FilterTransducer(f)
+  /* A transducer which expands each element into multiple elements. */
   def flatMap[A,B](f: A => GenTraversableOnce[B]) = FlatMapTransducer(f)
+  /** A transducer which slices the fold and only returns elements that fit inside a range. */
   def slice[A](start: Int, end: Int): Transducer[A,A] = SliceTransducer(start, end)
+  /** A transducer which attaches an index to each element in the fold (note: the fold function returned is mutable). */
   def zipWithIndex[A]: Transducer[A, (A, Int)] = ZipWithIndexTransducer()
 }
 
-// A generic transducer for which we cannot perform any known optimisations/extensions
+/**
+ * A generic transducer for users to extend.
+ *
+ * Note: We cannot perform any optimisations around generic transducers.
+ */
 abstract class GenericTransducer[A,B] extends Transducer[A,B]
 
 // A Joined fold over two collections.

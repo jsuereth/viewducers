@@ -25,7 +25,7 @@ abstract class StagedCollectionOps[E] {
     new SimpleStagedCollectionOps[SourceElement, E](source, ops.optimise)
 
 
-  // Staging operations
+  // Staging operations, TODO - document them.
 
   /** Create new view by composing current fold transformer with a new one */
   final def andThen[C](t: Transducer[E, C]): StagedCollectionOps[C] =
@@ -65,10 +65,11 @@ abstract class StagedCollectionOps[E] {
   override def toString = s"$source -> $ops -> done"
 }
 object StagedCollectionOps {
+  /** Create a new set of staged operations against an original collection. */
   def apply[E](collection: GenTraversableOnce[E]): StagedCollectionOps[E] =
     new SimpleStagedCollectionOps[E, E](collection, IdentityTransducer[E]())
 }
-
+/** A simple implementation of StagedCollectionOps with no frills. */
 private[collections] final class SimpleStagedCollectionOps[Origin, Next](
   override val source: GenTraversableOnce[Origin],
   override val ops: Transducer[Origin, Next]
