@@ -15,7 +15,7 @@ abstract class StagedCollectionOps[E] {
   type SourceElement
 
   /** The source collection.  TODO - can we leave this unbound? */
-  val source: TraversableOnce[SourceElement]
+  val source: GenTraversableOnce[SourceElement]
 
   /** The fold transformer, as a collection of operations. */
   def ops: Transducer[SourceElement, E]
@@ -65,12 +65,12 @@ abstract class StagedCollectionOps[E] {
   override def toString = s"$source -> $ops -> done"
 }
 object StagedCollectionOps {
-  def apply[E](collection: TraversableOnce[E]): StagedCollectionOps[E] =
+  def apply[E](collection: GenTraversableOnce[E]): StagedCollectionOps[E] =
     new SimpleStagedCollectionOps[E, E](collection, IdentityTransducer[E]())
 }
 
 private[collections] final class SimpleStagedCollectionOps[Origin, Next](
-  override val source: TraversableOnce[Origin],
+  override val source: GenTraversableOnce[Origin],
   override val ops: Transducer[Origin, Next]
 ) extends StagedCollectionOps[Next] {
   type SourceElement = Origin
