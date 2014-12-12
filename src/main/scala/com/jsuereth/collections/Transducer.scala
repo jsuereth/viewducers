@@ -24,24 +24,31 @@ sealed abstract class Transducer[-A, +B] {
     * - Remove any placeholder Transducers (identity)
     * - Reorder/Join limiting operations (e.g. multiple Slice operations)
     *
-    * @return A new transducer with more optimal execution behaior
+    * @return A new transducer with more optimal execution behavior
     */
-  final def optimise: Transducer[A, B] =
-    this match {
+  final def optimise: Transducer[A, B] = {
+    // Note: We'e already done compile-time checks of types, so here we get dirty as we try to shuffle the bytecode around.
+    def optimiseImpl(list: Seq[Transducer[_,_]], finalList: Seq[Transducer[_,_]]): Seq[Transducer[_,_]] = list match {
+      case Seq() => finalList
       // TODO - we need to peel off the layers of JoinedTransducers and create Seq(ops) if we can, then optimise via the entire sequence.
-      case JoinedTransducer(_: IdentityTransducer[_], other) => other.optimise.asInstanceOf[Transducer[A,B]]
-      case JoinedTransducer(other, id) if id.isInstanceOf[IdentityTransducer[_]] => other.optimise.asInstanceOf[Transducer[A,B]]
-      case JoinedTransducer(one, two) => JoinedTransducer(one.optimise, two.optimise)
-      // TODO - is this actually more efficient, or are transducers just as fast?
-      case JoinedTransducer(MapTransducer(f), MapTransducer(g)) => MapTransducer(f andThen g)
-      case other => other
+      case Seq(_: IdentityTransducer[_], other, rest @ _*) => optimiseImpl(rest, finalList :+ other)
+      case Seq(other, _: IdentityTransducer[_], rest @ _*) => optimiseImpl(rest, finalList :+ other)
+      // TODO - Preliminary tests show combining map functions to be LESS efficient.
+      // TODO - If the pattern matcher ever re-ifies the type and checksthem, we cry because it's broken.
+      case Seq(head, rest @ _*) => optimiseImpl(rest, finalList :+ head)
     }
+    // Reduce left appears to be faster for the JVM to execute than reduceRight, but could just be noise.
+    optimiseImpl(toSeqOps, ArrayBuffer.empty).reduceLeft {
+       (left, right) =>
+      JoinedTransducer[Any,Any,Any](left.asInstanceOf[Transducer[Any,Any]],right.asInstanceOf[Transducer[Any,Any]])
+    }.asInstanceOf[Transducer[A,B]]
+  }
 
   /** An internal mechanism to convert a transducer into a Sequence of transducer operations.
     *
     * This is step one when optimising a transducer.
     */
-  private def toSeqOps: Seq[Transducer[_,_]] = {
+  protected final def toSeqOps: Seq[Transducer[_,_]] = {
     def toSeqOpsImpl(acc: Seq[Transducer[_, _]], next: Transducer[_, _]): Seq[Transducer[_, _]] =
       next match {
         case JoinedTransducer(a @ JoinedTransducer(_,_), b) => toSeqOpsImpl(acc ++ toSeqOpsImpl(Vector.empty, a), b)

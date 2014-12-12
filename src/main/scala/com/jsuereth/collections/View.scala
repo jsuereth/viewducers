@@ -45,6 +45,7 @@ abstract class View[E, To] {
   final def slice(start: Int, end: Int): View[E,To] = SimpleView(underlying.slice(start, end), cbf)
   final def take(n: Int): View[E,To] = SimpleView(underlying.take(n), cbf)
   final def drop(n: Int): View[E,To] = SimpleView(underlying.drop(n), cbf)
+  override def toString = s"View($underlying -> $cbf)"
 }
 
 /** Simple implementation of view with no fancy frills. */
@@ -62,6 +63,7 @@ object View {
   final class ExtensionMethods[A, Repr](val staged: StagedCollectionOps[A]) extends AnyVal {
     def stagedView(implicit cbf: CanBuildFrom[Repr, A, Repr]): View[A, Repr] = SimpleView[Repr, A, Repr](staged, cbf)
   }
+  /** This implicit makes staged & stagedView available on all traversables. */
   implicit def withExtensions[Repr](coll: Repr)(implicit traversable: IsTraversableLike[Repr]) =
     new ExtensionMethods[traversable.A, Repr](
       StagedCollectionOps[traversable.A](traversable.conversion(coll)))
