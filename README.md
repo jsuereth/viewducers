@@ -31,3 +31,23 @@ scala> test2.to_![Vector]
 res0: Vector[(Int, Int)] = Vector((2,0), (3,1))
 ```
 
+
+## Apeing Existing collection views
+
+```
+scala> import com.jsuereth.collections.View._
+import com.jsuereth.collections.View._
+
+scala> Vector(1,2,3,4).stagedView.filter(_%2==0)
+res0: com.jsuereth.collections.View[Int,scala.collection.immutable.Vector[Int]] = SimpleView(Vector(1, 2, 3, 4) -> identity -> Filter(<function1>) -> done,scala.collection.IndexedSeq$$anon$1@5bf6e33b)
+
+scala> res0.force
+res1: scala.collection.immutable.Vector[Int] = Vector(2, 4)
+
+scala> "Hello".stagedView.filter(_ % 2 == 0).force
+res2: String = Hll
+
+scala> "Hello".stagedView.filter(_ % 2 == 0)
+res3: com.jsuereth.collections.View[scala.collection.generic.IsTraversableLike.stringRepr.A,String] = SimpleView(Hello -> identity -> Filter(<function1>) -> done,scala.Predef$$anon$3@450f9792)
+```
+
