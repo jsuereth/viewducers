@@ -2,6 +2,7 @@ package com.jsuereth.collections
 
 import scala.collection.{GenTraversableOnce, GenTraversable}
 import scala.collection.generic.CanBuildFrom
+import scala.language.implicitConversions
 
 
 /** A view represents a set of staged collection operations against an original collection.
@@ -26,15 +27,21 @@ abstract class View[E, To] {
 
   /** Forces the staged operations to return the new collection. */
   final def force: To = {
-    // TODO - some type hackery to get this to work.
+    // Some type hackery to get this to work.  The beauty is, we've verified all the types on the input,
+    // and we know how we use the builder, so these casts are ok optimisations.
     underlying.to_![GenTraversable](cbf.asInstanceOf[CanBuildFrom[Nothing,E, GenTraversable[E]]]).asInstanceOf[To]
   }
 
 
-  // TODO - Docment the standard methods.
+  // TODO - Document the standard methods.
   final def map[B, NextTo](f: E => B)(implicit cbf: CanBuildFrom[To, B, NextTo]): View[B, NextTo] =
     SimpleView(
       underlying.map(f),
+      cbf.asInstanceOf[CanBuildFrom[From, B, NextTo]]
+    )
+  final def collect[B, NextTo](f: PartialFunction[E,B])(implicit cbf: CanBuildFrom[To, B, NextTo]): View[B, NextTo] =
+    SimpleView(
+      underlying.collect(f),
       cbf.asInstanceOf[CanBuildFrom[From, B, NextTo]]
     )
   final def filter(f: E => Boolean): View[E, To] = SimpleView(underlying.filter(f), cbf)
@@ -45,6 +52,8 @@ abstract class View[E, To] {
   final def slice(start: Int, end: Int): View[E,To] = SimpleView(underlying.slice(start, end), cbf)
   final def take(n: Int): View[E,To] = SimpleView(underlying.take(n), cbf)
   final def drop(n: Int): View[E,To] = SimpleView(underlying.drop(n), cbf)
+  final def takeWhile(f: E => Boolean): View[E,To] = SimpleView(underlying.takeWhile(f), cbf)
+  final def dropWhile(f: E => Boolean): View[E,To]   = SimpleView(underlying.dropWhile(f), cbf)
   override def toString = s"View($underlying -> $cbf)"
 }
 

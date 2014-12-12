@@ -67,6 +67,7 @@ object Transducer {
   def identity[A]: Transducer[A,A] = IdentityTransducer[A]()
   /* A transducer which maps elements in the fold to new elements. */
   def map[A,B](f: A => B): Transducer[A,B] = MapTransducer(f)
+  def collect[A,B](f: PartialFunction[A,B]): Transducer[A,B] = CollectTransducer(f)
   /* A transducers which removes elements from the fold. */
   def filter[A](f: A => Boolean): Transducer[A,A] = FilterTransducer(f)
   /* A transducer which expands each element into multiple elements. */
@@ -75,6 +76,8 @@ object Transducer {
   def slice[A](start: Int, end: Int): Transducer[A,A] = SliceTransducer(start, end)
   /** A transducer which attaches an index to each element in the fold (note: the fold function returned is mutable). */
   def zipWithIndex[A]: Transducer[A, (A, Int)] = ZipWithIndexTransducer()
+  def takeWhile[A](f: A => Boolean) = TakeWhileTransducer(f)
+  def dropWhile[A](f: A => Boolean) = DropWhileTransducer(f)
 }
 
 /**
@@ -97,6 +100,19 @@ private[collections] final case class MapTransducer[A,B](f: A => B) extends Tran
     (acc, el) => in(acc, f(el))
   }
   override def toString = s"Map($f)"
+}
+
+private[collections] final case class CollectTransducer[A,B](f: PartialFunction[A,B]) extends Transducer[A,B] {
+  val lifted = f.lift
+  override def apply[Accumulator](in: Fold[Accumulator, B]): Fold[Accumulator, A] = {
+    // TODO - Is this the most optimal way?
+    (acc, el) =>
+      lifted(el) match {
+        case Some(fel) => in(acc, fel)
+        case None => acc
+      }
+  }
+  override def toString = s"Collect($f)"
 }
 private[collections] final case class FlatMapTransducer[A,B](f: A => GenTraversableOnce[B]) extends Transducer[A, B] {
   override def apply[Accumulator](in: Fold[Accumulator, B]): Fold[Accumulator, A] = {
@@ -121,9 +137,9 @@ private[collections] final case class IdentityTransducer[A]() extends Transducer
 
 private[collections] final case class SliceTransducer[A](start: Int, end: Int) extends Transducer[A,A] {
   override def apply[Accumulator](in: Fold[Accumulator,A]): Fold[Accumulator,A] =
-    new IndexStoringFoldFunction[Accumulator](in)
+    new StatefulFoldFunction[Accumulator](in)
   //Mutable optimisation
-  private class IndexStoringFoldFunction[Accumulator](next: Fold[Accumulator, A]) extends Fold[Accumulator, A] {
+  private class StatefulFoldFunction[Accumulator](next: Fold[Accumulator, A]) extends Fold[Accumulator, A] {
     var idx = -1
     override def apply(acc: Accumulator, el: A): Accumulator = {
       idx += 1
@@ -131,15 +147,44 @@ private[collections] final case class SliceTransducer[A](start: Int, end: Int) e
       else acc
     }
   }
-
   override def toString = s"Slice($start, $end)"
+}
+
+private[collections] final case class TakeWhileTransducer[A](f: A => Boolean) extends Transducer[A,A] {
+  override def apply[Accumulator](in: Fold[Accumulator,A]): Fold[Accumulator,A] =
+    new StatefulFoldFunction[Accumulator](in)
+  //Mutable optimisation
+  private class StatefulFoldFunction[Accumulator](next: Fold[Accumulator, A]) extends Fold[Accumulator, A] {
+    var taking = true
+    override def apply(acc: Accumulator, el: A): Accumulator = {
+      taking = taking && f(el)
+      if(taking)  next(acc, el)
+      else acc
+    }
+  }
+  override def toString = s"TakeWhile($f)"
+}
+
+private[collections] final case class DropWhileTransducer[A](f: A => Boolean) extends Transducer[A,A] {
+  override def apply[Accumulator](in: Fold[Accumulator,A]): Fold[Accumulator,A] =
+    new StatefulFoldFunction[Accumulator](in)
+  //Mutable optimisation
+  private class StatefulFoldFunction[Accumulator](next: Fold[Accumulator, A]) extends Fold[Accumulator, A] {
+    var dropping = true
+    override def apply(acc: Accumulator, el: A): Accumulator = {
+      dropping = dropping && f(el)
+      if(dropping)  acc
+      else next(acc, el)
+    }
+  }
+  override def toString = s"DropWhile($f)"
 }
 
 private[collections] final case class ZipWithIndexTransducer[A]() extends Transducer[A, (A, Int)] {
   override def apply[Accumulator](in: Fold[Accumulator, (A, Int)]): Fold[Accumulator,A] =
-    new IndexStoringFoldFunction[Accumulator](in)
+    new StatefulFoldFunction[Accumulator](in)
   //Mutable optimisation
-  private class IndexStoringFoldFunction[Accumulator](next: Fold[Accumulator, (A, Int)]) extends Fold[Accumulator, A] {
+  private class StatefulFoldFunction[Accumulator](next: Fold[Accumulator, (A, Int)]) extends Fold[Accumulator, A] {
     var idx = -1
     override def apply(acc: Accumulator, el: A): Accumulator = {
       idx += 1

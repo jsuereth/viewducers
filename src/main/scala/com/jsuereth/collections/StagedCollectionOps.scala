@@ -1,6 +1,7 @@
 package com.jsuereth.collections
 
 import scala.annotation.unchecked.{ uncheckedVariance => uV }
+import scala.language.higherKinds
 import scala.collection.GenTraversableOnce
 import scala.collection.generic.CanBuildFrom
 
@@ -32,12 +33,17 @@ abstract class StagedCollectionOps[E] {
     // TODO - should we always optimise the ops tree here?
     new SimpleStagedCollectionOps(source, (ops andThen t))
   final def map[B](f: E => B): StagedCollectionOps[B] = andThen(Transducer.map(f))
+  final def collect[B](f: PartialFunction[E,B]): StagedCollectionOps[B] = andThen(Transducer.collect(f))
   final def flatMap[B](f: E => GenTraversableOnce[B]) = andThen(Transducer.flatMap(f))
   final def filter(f: E => Boolean): StagedCollectionOps[E] = andThen(Transducer.filter(f))
+  final def filterNot(f: E => Boolean): StagedCollectionOps[E] = andThen(Transducer.filter(e => !f(e)))  // TODO - Is this much slower?
   final def slice(start: Int, end: Int): StagedCollectionOps[E] = andThen(Transducer.slice(start,end))
   final def take(n: Int): StagedCollectionOps[E] = andThen(Transducer.slice(0, n))
   final def drop(n: Int): StagedCollectionOps[E] = andThen(Transducer.slice(n, Int.MaxValue))
+  final def tail: StagedCollectionOps[E] = andThen(Transducer.slice(1, Int.MaxValue))
   final def zipWithIndex: StagedCollectionOps[(E, Int)] = andThen(Transducer.zipWithIndex[E])
+  final def takeWhile(f: E => Boolean) = andThen(Transducer.takeWhile(f))
+  final def dropWhile(f: E => Boolean) = andThen(Transducer.dropWhile(f))
   // TODO - zip.... may not be possible to do correctly.....
 
 
