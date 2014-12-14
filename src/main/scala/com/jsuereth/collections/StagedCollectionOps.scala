@@ -21,6 +21,18 @@ abstract class StagedCollectionOps[E] {
   /** The fold transformer, as a collection of operations. */
   def ops: Transducer[SourceElement, E]
 
+  /** Returns true if the underlying collection can be traversed multiple times. */
+  final def isTraversableAgain = source.isTraversableAgain
+
+  /** Returns whether or not the original collection has a definite size.
+    *
+    * Note: we cannot really determine if the staged collection has a definite size, as
+    *       any flatMap operations COULD be returning infinite collections.
+    */
+  final def hasDefiniteSourceSize = source.hasDefiniteSize
+  /** Returns true if this collection has any staged operations. */
+  final def hasStagedOperations = !ops.isInstanceOf[IdentityTransducer[_]]
+
 
   // Staging operations, TODO - document them.
 
@@ -56,9 +68,13 @@ abstract class StagedCollectionOps[E] {
       case (None, element) =>  if(f(element)) Some(element) else None
       case (result, _) => result
     }
-  final def size_! = foldLeft_!(0) { (count, el) => count + 1 }
+  final def size_! =
+    if(isTraversableAgain && !hasStagedOperations) source.size
+    else foldLeft_!(0)(Types.countingFold)
   final def to_![Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = {
     val builder = cbf()
+    // TODO - Ideally we'd like a *fast* way to know if we can send a size hint to the builder.
+    if(isTraversableAgain && !hasStagedOperations) builder.sizeHint(source.size)
     foldLeft_!(builder)(Types.appendFold)
     builder.result()
   }

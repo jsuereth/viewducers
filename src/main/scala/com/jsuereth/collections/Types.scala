@@ -16,8 +16,15 @@ object Types {
   final class BuilderFold[E, To]() extends Fold[mutable.Builder[E, To], E] {
    def apply(acc: mutable.Builder[E, To], e: E): mutable.Builder[E, To] = acc += e
   }
+  // This trickery avoids allocations for known pure functions.
   private val dummyAppendFold = new BuilderFold[Nothing,Nothing]()
   def appendFold[E, To] = dummyAppendFold.asInstanceOf[BuilderFold[E,To]]
+
+  final class CountingFold[E] extends Fold[Int, E] {
+    def apply(acc: Int, e: E) = acc + 1
+  }
+  private val dummyCountingFold = new CountingFold[Nothing]
+  def countingFold[E] = dummyCountingFold.asInstanceOf[CountingFold[E]]
 
 }
 

@@ -1,5 +1,6 @@
 package com.jsuereth.collections
 
+import scala.annotation.unchecked.{uncheckedVariance => uV}
 import scala.collection.{GenTraversableOnce, GenTraversable}
 import scala.collection.generic.CanBuildFrom
 import scala.language.implicitConversions
@@ -24,13 +25,27 @@ abstract class View[E, To] {
 
   /** The source collection.  TODO - can we leave this unbound? */
   val underlying: StagedCollectionOps[E]
-
   /** Forces the staged operations to return the new collection. */
   final def force: To = {
     // Some type hackery to get this to work.  The beauty is, we've verified all the types on the input,
     // and we know how we use the builder, so these casts are ok optimisations.
     underlying.to_![GenTraversable](cbf.asInstanceOf[CanBuildFrom[Nothing,E, GenTraversable[E]]]).asInstanceOf[To]
   }
+
+  /** This will force the underyling operations to run, returning a new view against the temporary collection. */
+  final def memoize(implicit toGenTraversable: To => GenTraversable[E]): View[E,To] =
+    if(underlying.hasStagedOperations) SimpleView(StagedCollectionOps(toGenTraversable(force)), cbf)
+    else this
+
+  // TODO - we should probably keep some sort of atomic 'var' which contains a memoized instance of this view.
+  //        The memoize function can simple return "this" after memoizing, and we can ensure this is called from
+  //        any terminal operation.
+  //        Additionally, we can base any further view chains off this memoized view rather than repeating the work again.
+  // One issue here is we need to know that "To" can actually be traversed.  It's possible it could be something like
+  // "Array" or "String" where we need to run a conversion to get the GenTraversableOnce interface we need.
+  // We could look into capturing that in all terminal operations (like force).
+
+
 
 
   // TODO - Document the standard methods.
@@ -91,6 +106,23 @@ abstract class View[E, To] {
     val not = (e: E) => !p(e)
     !exists(not)
   }
+  // TODO - groupBy
+  final def head: E = headOption.getOrElse(throw new IllegalStateException("Cannot call head on an empty collection/view!"))
+  final def headOption: Option[E] =
+    Transducer.withEarlyExit {
+      underlying.foldLeft_!(Option.empty[E]) { (acc, el) =>
+        if(acc.isEmpty) Transducer.earlyExit(Some(el))
+        else acc
+      }
+    }
+  // TODO - init
+  // TDOO - inits
+  // TODO - isEmpty
+  // TODO - isTraversableAgain
+
+  final def size: Int = underlying.size_!
+  final def to[Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = underlying.to_![Col]
+
 
 
   override def toString = s"View($underlying -> $cbf)"

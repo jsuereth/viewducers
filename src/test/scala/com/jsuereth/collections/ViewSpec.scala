@@ -13,6 +13,7 @@ object ViewSpec extends Specification {
           count elements          $count
           flatten nested collections $flatten
           drop elements           $drop
+          find elements           $find
   """
 
   def count = {
@@ -40,6 +41,12 @@ object ViewSpec extends Specification {
     val orig = (1 to 20).to[scala.collection.mutable.ArrayBuffer]
     val scalaView = orig.view.drop(10).force
     val ourView = orig.stagedView.drop(10).force
+    ourView must beEqualTo(scalaView)
+  }
+  def find = {
+    val orig = (1 to 20).to[scala.collection.mutable.Set]
+    val scalaView = orig.view.find(_ % 2 == 0)
+    val ourView = orig.stagedView.find(_ % 2 == 0)
     ourView must beEqualTo(scalaView)
   }
 }
