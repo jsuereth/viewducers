@@ -49,11 +49,50 @@ abstract class View[E, To] {
     SimpleView(underlying.zipWithIndex, nextCbf)
   final def flatMap[B, NextTo](f: E => GenTraversableOnce[B])(implicit nextCbf: CanBuildFrom[To,B, NextTo]): View[B, NextTo] =
     SimpleView(underlying.flatMap(f), nextCbf)
+  final def flatten[B, NextTo](implicit asTraversable: (E) ⇒ GenTraversableOnce[B], nextCbf: CanBuildFrom[To,B, NextTo]): View[B, NextTo] =
+    flatMap(asTraversable)(nextCbf)
   final def slice(start: Int, end: Int): View[E,To] = SimpleView(underlying.slice(start, end), cbf)
   final def take(n: Int): View[E,To] = SimpleView(underlying.take(n), cbf)
   final def drop(n: Int): View[E,To] = SimpleView(underlying.drop(n), cbf)
   final def takeWhile(f: E => Boolean): View[E,To] = SimpleView(underlying.takeWhile(f), cbf)
   final def dropWhile(f: E => Boolean): View[E,To]   = SimpleView(underlying.dropWhile(f), cbf)
+
+
+  // Terminal methods
+
+
+  // TODO - this should return a view....
+  final def ++[B >: E, That](xs: GenTraversableOnce[B])(implicit bf: CanBuildFrom[To, B, That]): That = {
+    val builder = bf()
+    // TODO use anonymous fold class...
+    underlying.foldLeft_!(builder)(Types.appendFold)
+    xs.foldLeft(builder)(Types.appendFold)
+    // SO, in new fun news, we need to return a VIEW here, yeah...
+    builder.result()
+  }
+  final def count(p: E => Boolean): Int =
+  // TODO - use anonymous fold class
+    underlying.foldLeft_!(0) { (ac, el) =>
+      if (p(el)) ac + 1
+      else ac
+    }
+  final def exists(p: E => Boolean): Boolean = find(p).isDefined
+  final def find(p: E => Boolean): Option[E] =
+    Transducer.withEarlyExit {
+      underlying.foldLeft_!(Option.empty[E]) {(acc, el) =>
+        if(acc.isEmpty && p(el)) Transducer.earlyExit(Some(el))
+        else acc
+      }
+    }
+  final def fold[A1 >: E](z: A1)(op: (A1, A1) ⇒ A1): A1 = underlying.foldLeft_!(z)(op)
+  final def foldLeft[Accumulator](z: Accumulator)(op: (Accumulator, E) ⇒ Accumulator): Accumulator = underlying.foldLeft_!(z)(op)
+  // TODO - less bytecode heavy mechanism here.
+  final def forall(p: E => Boolean): Boolean = {
+    val not = (e: E) => !p(e)
+    !exists(not)
+  }
+
+
   override def toString = s"View($underlying -> $cbf)"
 }
 

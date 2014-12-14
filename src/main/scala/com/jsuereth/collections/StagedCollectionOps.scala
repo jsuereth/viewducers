@@ -21,10 +21,6 @@ abstract class StagedCollectionOps[E] {
   /** The fold transformer, as a collection of operations. */
   def ops: Transducer[SourceElement, E]
 
-  /** Transforms this collection of operations into a simpler format, if possible. */
-  final def optimise: StagedCollectionOps[E] =
-    new SimpleStagedCollectionOps[SourceElement, E](source, ops.optimise)
-
 
   // Staging operations, TODO - document them.
 
@@ -51,7 +47,8 @@ abstract class StagedCollectionOps[E] {
   // Terminal operations
 
   /** Note - this will consume the traversable. */
-  final def foldLeft_![Accumulator](acc: Accumulator)(f: (Accumulator, E) => Accumulator): Accumulator = source.foldLeft(acc)(ops.apply(f))
+  final def foldLeft_![Accumulator](acc: Accumulator)(f: (Accumulator, E) => Accumulator): Accumulator =
+    source.foldLeft(acc)(ops.apply(f))
 
   final def find_!(f: E => Boolean): Option[E] =
     // TODO - see if we can early exit...
@@ -62,12 +59,9 @@ abstract class StagedCollectionOps[E] {
   final def size_! = foldLeft_!(0) { (count, el) => count + 1 }
   final def to_![Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = {
     val builder = cbf()
-    foldLeft_!(builder) {
-      (acc, el) => acc += el
-    }
+    foldLeft_!(builder)(Types.appendFold)
     builder.result()
   }
-
   override def toString = s"$source -> $ops -> done"
 }
 object StagedCollectionOps {

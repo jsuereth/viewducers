@@ -11,6 +11,8 @@ resolvers += "Sonatype OSS Snapshots" at
 
 libraryDependencies += "com.storm-enroute" %% "scalameter" % "0.6"
 
+libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.14" % "test"
+
 testFrameworks += new TestFramework(
   "org.scalameter.ScalaMeterFramework")
 

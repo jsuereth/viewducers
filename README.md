@@ -1,4 +1,4 @@
-A toy project based on: https://gist.github.com/odersky/6b7c0eb4731058803dfd.
+A project based on: https://gist.github.com/odersky/6b7c0eb4731058803dfd.
 
 
 VIEWDUCTION -  The intersection of Transducers (Fold transformers) and Scala collection Views.
@@ -12,9 +12,24 @@ This project attempts to improve the implementation & performance of Scala colle
 * We will make any operation which executes a view have an ugly character (`!`) so people know it's effectful
 * Transducers represent an excellent way to stage computation that will be performed via a fold.
 * We need extensive microbenchmarking to test out different possible optimisations and code traversals, as well as understand the overhead.
+* We should be able to avoid excessive bytecode overhead through simple understanding of Scala => JVM features.
+
+## Transducers
+
+This library provides a very minimal and complete Transducers library.  This transducers library is optimised for use
+with the Scala collections library in its current form.  We won't dig into the details of transducers in this readme,
+but will set up a tutorial on them separately.
 
 
-## Basic Usage
+## StagedCollections
+
+A Staged collection is a collection where you stage Transducers to execute against it.   Any operation devoid of a `!`
+is one that simply append a new Transducer onto the stack.   The `toString` method of a StagedCollection will attempt to
+show you the stack of transducers.  
+
+**Note: The `toString` could grow out of control and is meant purely for debugging, not logging.**
+
+If you're only interested in the new, delineated, API try the following.
 
 
 ```
@@ -31,8 +46,14 @@ scala> test2.to_![Vector]
 res0: Vector[(Int, Int)] = Vector((2,0), (3,1))
 ```
 
+## Views
 
-## Apeing Existing collection views
+This library attempts to mimic, as much as it can, the existing view API via an abstraction on top of `StagedCollection`s, called `View`.
+A View is something which will stage all the operations it can, but certain operations will force it to run against the original collection.
+
+Note:  Unlike Scala's current views, these will NEVER memoize the partial-results of operations.   Upon terminal operation it will
+attempt to read from the original collection again.  Like Scala's current views, these also do not denote which operations are terminal.  They
+are meant as a drop-in replacement for existing views.
 
 ```
 scala> import com.jsuereth.collections.View._
