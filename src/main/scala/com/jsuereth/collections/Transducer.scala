@@ -4,6 +4,7 @@ import Types.Fold
 
 import scala.collection.GenTraversableOnce
 import scala.collection.mutable.ArrayBuffer
+import scala.util.control.ControlThrowable
 
 /**
  * A transformer over Folds.  Instead of calling it a "fold transformer" or "fold mapper" or anything so blaise, we'll
@@ -81,7 +82,7 @@ object Transducer {
   def dropWhile[A](f: A => Boolean) = DropWhileTransducer(f)
 
   /** The exception we throw to terminate execution early. */
-  private class EarlyExit[Accumulator](val accumulator: Accumulator) extends Throwable {
+  private class EarlyExit[Accumulator](val accumulator: Accumulator) extends ControlThrowable {
     override def fillInStackTrace(): Throwable = this
   }
   // Hidden thread local which supports the earlyExit + withEarlyExit API.

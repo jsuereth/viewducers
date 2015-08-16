@@ -85,12 +85,17 @@ abstract class View[E, To] {
     // SO, in new fun news, we need to return a VIEW here, yeah...
     builder.result()
   }
-  final def count(p: E => Boolean): Int =
-  // TODO - use anonymous fold class
-    underlying.foldLeft_!(0) { (ac, el) =>
-      if (p(el)) ac + 1
-      else ac
+  final def count(p: E => Boolean): Int = {
+    // TODO - We are using mutability and assumed sequential behavior because boxing/unboxing is actually a burden on this computation.
+    var acc = 0
+    Transducer withEarlyExit {
+      underlying.foldLeft_!(null) { (ignore, el) =>
+        if (p(el)) acc += 1
+        null
+      }
     }
+    acc
+  }
   final def exists(p: E => Boolean): Boolean = find(p).isDefined
   final def find(p: E => Boolean): Option[E] =
     Transducer.withEarlyExit {
