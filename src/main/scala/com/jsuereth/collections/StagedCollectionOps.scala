@@ -58,14 +58,18 @@ abstract class StagedCollectionOps[E] {
 
   // Terminal operations
 
+
+
   /** Note - this will consume the traversable. */
   final def foldLeft_![Accumulator](acc: Accumulator)(f: (Accumulator, E) => Accumulator): Accumulator =
-    source.foldLeft(acc)(ops.apply(f))
+    Transducer.withEarlyExit {
+      source.foldLeft(acc)(ops.apply(f))
+    }
 
   final def find_!(f: E => Boolean): Option[E] =
     // TODO - see if we can early exit...
     foldLeft_!(Option.empty[E]) {
-      case (None, element) =>  if(f(element)) Some(element) else None
+      case (None, element) => if (f(element)) Some(element) else None
       case (result, _) => result
     }
   final def size_! =

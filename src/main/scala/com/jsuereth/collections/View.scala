@@ -88,21 +88,17 @@ abstract class View[E, To] {
   final def count(p: E => Boolean): Int = {
     // TODO - We are using mutability and assumed sequential behavior because boxing/unboxing is actually a burden on this computation.
     var acc = 0
-    Transducer withEarlyExit {
-      underlying.foldLeft_!(null) { (ignore, el) =>
-        if (p(el)) acc += 1
-        null
-      }
+    underlying.foldLeft_!(null) { (ignore, el) =>
+      if (p(el)) acc += 1
+      null
     }
     acc
   }
   final def exists(p: E => Boolean): Boolean = find(p).isDefined
   final def find(p: E => Boolean): Option[E] =
-    Transducer.withEarlyExit {
-      underlying.foldLeft_!(Option.empty[E]) {(acc, el) =>
-        if(acc.isEmpty && p(el)) Transducer.earlyExit(Some(el))
-        else acc
-      }
+    underlying.foldLeft_!(Option.empty[E]) {(acc, el) =>
+      if(acc.isEmpty && p(el)) Transducer.earlyExit(Some(el))
+      else acc
     }
   final def fold[A1 >: E](z: A1)(op: (A1, A1) ⇒ A1): A1 = underlying.foldLeft_!(z)(op)
   final def foldLeft[Accumulator](z: Accumulator)(op: (Accumulator, E) ⇒ Accumulator): Accumulator = underlying.foldLeft_!(z)(op)
@@ -114,12 +110,10 @@ abstract class View[E, To] {
   // TODO - groupBy
   final def head: E = headOption.getOrElse(throw new IllegalStateException("Cannot call head on an empty collection/view!"))
   final def headOption: Option[E] =
-    Transducer.withEarlyExit {
       underlying.foldLeft_!(Option.empty[E]) { (acc, el) =>
         if(acc.isEmpty) Transducer.earlyExit(Some(el))
         else acc
       }
-    }
   // TODO - init
   // TDOO - inits
   // TODO - isEmpty

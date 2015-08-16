@@ -35,13 +35,12 @@ object SliceBenchmark extends PerformanceTest.Microbenchmark {
           r.stagedView.slice(40000,40500).count(_ % 3 == 1)
       }
     }
-    /*
     measure method "view" in {
       using(collection) in {
         r =>
           r.view.slice(40000,40500).count(_ % 3 == 1)
       }
     }
-    */
+
   }
 }
