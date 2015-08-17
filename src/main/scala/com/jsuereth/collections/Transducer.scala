@@ -101,10 +101,10 @@ object Transducer {
    * @tparam Accumulator  The type of the Accumulator
    * @return  The accumulator (with a "drop of the reduce function" hook if enabled).
    */
-  def earlyExit[Accumulator](acc: Accumulator): Accumulator = throw new EarlyExit(acc)
+  private[collections] def earlyExit[Accumulator](acc: Accumulator): Accumulator = throw new EarlyExit(acc)
 
   /** Returns true if a transducer should return an early-exit reducer function. */
-  def shouldEarlyExit: Boolean = supportsEarlyExitLocal.get()
+  private[collections] def shouldEarlyExit: Boolean = supportsEarlyExitLocal.get()
 
   /**
    * This denotes a block of code as handling early exits.
@@ -122,7 +122,7 @@ object Transducer {
    * @return  The result of the function.
    */
   // Note: This will handle early exit exceptions from reducers that support them.
-  def withEarlyExit[Accumulator](f: => Accumulator) = {
+  private[collections] def withEarlyExit[Accumulator](f: => Accumulator) = {
     val orig = supportsEarlyExitLocal.get()
     supportsEarlyExitLocal.set(true)
     try f
@@ -214,8 +214,13 @@ private[collections] final case class SliceTransducer[A](start: Int, end: Int) e
     var idx = -1
     override def apply(acc: Accumulator, el: A): Accumulator = {
       idx += 1
-      if(idx >= start && idx < end)  next(acc, el)
-      else Transducer.earlyExit(acc)
+      if(idx < end)  {
+        if(idx >= start) next(acc, el)
+        else acc
+      }
+      else {
+        Transducer.earlyExit(acc)
+      }
     }
   }
   override def toString = s"Slice($start, $end)"

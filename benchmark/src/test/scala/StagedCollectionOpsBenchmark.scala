@@ -1,8 +1,13 @@
 package com.jsuereth.collections
 
+import View._
+import org.scalameter.PerformanceTest
 import org.scalameter.api._
-import View.withExtensions
+import org.scalameter.reporting.RegressionReporter
 
+/**
+ * Created by jsuereth on 8/16/15.
+ */
 object StagedCollectionOpsBenchmark extends PerformanceTest {
   lazy val executor = LocalExecutor(
     new Executor.Warmer.Default,
