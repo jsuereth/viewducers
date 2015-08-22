@@ -81,6 +81,16 @@ object Transducer {
     */
   def dropWhile[A](f: A => Boolean) = DropWhileTransducer(f)
 
+  /**
+   * Takes all but the last element of a fold.
+   *
+   * Note: This will consume the entire collection.
+   *
+   * @tparam A  The type of element we accept
+   * @return A transducer which limits the input by taking all but the last eleemnt.
+   */
+  def init[A] = InitTransducer[A]
+
   /** The exception we throw to terminate execution early. */
   private class EarlyExit[Accumulator](val accumulator: Accumulator) extends ControlThrowable {
     override def fillInStackTrace(): Throwable = this
@@ -268,4 +278,19 @@ private[collections] final case class ZipWithIndexTransducer[A]() extends Transd
     }
   }
   override def toString = s"ZipWithIndex"
+}
+
+// TODO - This could probably be faster..
+private[collections] final case class InitTransducer[A]() extends Transducer[A, A] {
+  override def apply[Accumulator](in: Fold[Accumulator, A]): Fold[Accumulator, A] =
+    new StatefulFoldFunction[Accumulator](in)
+  private class StatefulFoldFunction[Accumulator](next: Fold[Accumulator, A]) extends AbtractFold[Accumulator, A] {
+    var lst: Option[A] = None
+    def apply(acc: Accumulator, el: A): Accumulator = {
+      val nacc = if (lst.isDefined) next(acc, lst.get) else acc
+      lst = Some(el)
+      nacc
+    }
+  }
+
 }

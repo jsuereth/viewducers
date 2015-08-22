@@ -37,16 +37,6 @@ abstract class View[E, To] {
     if(underlying.hasStagedOperations) SimpleView(StagedCollectionOps(toGenTraversable(force)), cbf)
     else this
 
-  // TODO - we should probably keep some sort of atomic 'var' which contains a memoized instance of this view.
-  //        The memoize function can simple return "this" after memoizing, and we can ensure this is called from
-  //        any terminal operation.
-  //        Additionally, we can base any further view chains off this memoized view rather than repeating the work again.
-  // One issue here is we need to know that "To" can actually be traversed.  It's possible it could be something like
-  // "Array" or "String" where we need to run a conversion to get the GenTraversableOnce interface we need.
-  // We could look into capturing that in all terminal operations (like force).
-
-
-
 
   // TODO - Document the standard methods.
   final def map[B, NextTo](f: E => B)(implicit cbf: CanBuildFrom[To, B, NextTo]): View[B, NextTo] =
@@ -79,34 +69,53 @@ abstract class View[E, To] {
   // TODO - this should return a view....
   final def ++[B >: E, That](xs: GenTraversableOnce[B])(implicit bf: CanBuildFrom[To, B, That]): That = {
     val builder = bf()
-    // TODO use anonymous fold class...
     underlying.foldLeft_!(builder)(Types.appendFold)
     xs.foldLeft(builder)(Types.appendFold)
     // SO, in new fun news, we need to return a VIEW here, yeah...
     builder.result()
   }
-  final def count(p: E => Boolean): Int = {
-    // TODO - We are using mutability and assumed sequential behavior because boxing/unboxing is actually a burden on this computation.
-    var acc = 0
-    underlying.foldLeft_!(null) { (ignore, el) =>
-      if (p(el)) acc += 1
+  final def count(p: E => Boolean): Int =
+    underlying.foldLeft_!(0) { (acc, el) =>
+      if (p(el)) acc + 1
+      else acc
+    }
+  final def exists(p: E => Boolean): Boolean = find(p).isDefined
+  final def find(p: E => Boolean): Option[E] = underlying.find_!(p)
+
+  final def fold[A1 >: E](z: A1)(op: (A1, A1) ⇒ A1): A1 = underlying.foldLeft_!(z)(op)
+  final def foldLeft[Accumulator](z: Accumulator)(op: (Accumulator, E) ⇒ Accumulator): Accumulator = underlying.foldLeft_!(z)(op)
+  final def reduceLeftOption[B >: E](op: (B, E) => B): Option[B] = {
+    var first = true
+    var acc: Option[B] = None
+    foldLeft(null) { (ignore, x) =>
+      if (!acc.isDefined) {
+        acc = Some(x)
+      }
+      else {
+        acc = Some(op(acc.get, x))
+      }
       null
     }
     acc
   }
-  final def exists(p: E => Boolean): Boolean = find(p).isDefined
-  final def find(p: E => Boolean): Option[E] =
-    underlying.foldLeft_!(Option.empty[E]) {(acc, el) =>
-      if(acc.isEmpty && p(el)) Transducer.earlyExit(Some(el))
-      else acc
-    }
-  final def fold[A1 >: E](z: A1)(op: (A1, A1) ⇒ A1): A1 = underlying.foldLeft_!(z)(op)
-  final def foldLeft[Accumulator](z: Accumulator)(op: (Accumulator, E) ⇒ Accumulator): Accumulator = underlying.foldLeft_!(z)(op)
+  final def reduceLeft[B >: E](op: (B,E) => B): B = {
+    reduceLeftOption(op).getOrElse(throw new UnsupportedOperationException("empty.reduceLeft"))
+  }
+  final def reduce[A1 >: E](op: (A1, A1) => A1): A1 = reduceLeft(op)
+  final def aggregate[B](z: =>B)(seqop: (B, E) => B, combop: (B, B) => B): B = foldLeft(z)(seqop)
+  def min[B >: E](implicit cmp: Ordering[B]): E =
+    reduceLeftOption((x, y) => if (cmp.lteq(x, y)) x else y).getOrElse(throw new UnsupportedOperationException("empty.min"))
+
+  def max[B >: E](implicit cmp: Ordering[B]): E = {
+    reduceLeftOption((x, y) => if (cmp.gteq(x, y)) x else y).getOrElse(throw new UnsupportedOperationException("empty.max"))
+  }
+
   // TODO - less bytecode heavy mechanism here.
   final def forall(p: E => Boolean): Boolean = {
     val not = (e: E) => !p(e)
     !exists(not)
   }
+
   // TODO - groupBy
   final def head: E = headOption.getOrElse(throw new IllegalStateException("Cannot call head on an empty collection/view!"))
   final def headOption: Option[E] =
@@ -114,16 +123,64 @@ abstract class View[E, To] {
         if(acc.isEmpty) Transducer.earlyExit(Some(el))
         else acc
       }
-  // TODO - init
+  final def init: View[E,To] = SimpleView(underlying.init, cbf)
   // TDOO - inits
-  // TODO - isEmpty
-  // TODO - isTraversableAgain
-
+  final def isTraversableAgain: Boolean = underlying.isTraversableAgain
+  final def isEmpty: Boolean = underlying.isEmpty_!
   final def size: Int = underlying.size_!
   final def to[Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = underlying.to_![Col]
 
+  // SUmmation/addition things.
+  final def sum[B >: E](implicit num: Numeric[B]): B = foldLeft(num.zero)(num.plus)
+  final def product[B >: E](implicit num: Numeric[B]): B = foldLeft(num.one)(num.times)
 
 
+  final def mkString(start: String, sep: String, end: String): String =
+    addString(new StringBuilder(), start, sep, end).toString
+
+  final def mkString(sep: String): String = mkString("", sep, "")
+
+  final def mkString: String = mkString("")
+
+  /** Appends all elements of this $coll to a string builder using start, end, and separator strings.
+    *  The written text begins with the string `start` and ends with the string `end`.
+    *  Inside, the string representations (w.r.t. the method `toString`)
+    *  of all elements of this $coll are separated by the string `sep`.
+    *
+    * Example:
+    *
+    * {{{
+    *      scala> val a = List(1,2,3,4)
+    *      a: List[Int] = List(1, 2, 3, 4)
+    *
+    *      scala> val b = new StringBuilder()
+    *      b: StringBuilder =
+    *
+    *      scala> a.addString(b , "List(" , ", " , ")")
+    *      res5: StringBuilder = List(1, 2, 3, 4)
+    * }}}
+    *
+    *  @param  b    the string builder to which elements are appended.
+    *  @param start the starting string.
+    *  @param sep   the separator string.
+    *  @param end   the ending string.
+    *  @return      the string builder `b` to which elements were appended.
+    */
+  def addString(b: StringBuilder, start: String, sep: String, end: String): StringBuilder = {
+    var first = true
+    b append start
+    foldLeft(true) { (first, x) =>
+      if(first) {
+        b append x
+      } else {
+        b append sep
+        b append x
+      }
+      false
+    }
+    b append end
+    b
+  }
   override def toString = s"View($underlying -> $cbf)"
 }
 

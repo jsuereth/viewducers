@@ -9,17 +9,20 @@ object ViewSpec extends Specification {
 
 
        The View class should
-          append elements with ++ $appendMultiple
-          count elements          $count
+          append elements with ++    $appendMultiple
+          count elements             $count
           flatten nested collections $flatten
-          drop elements           $drop
-          find elements           $find
+          drop elements              $drop
+          find elements              $find
+          take init                  $init
+          forall test                $forall
+          exists test                $exists
   """
 
   def count = {
     val orig = List(1,2,3,4)
     val scalaView = orig.view.count(_ % 2 == 0)
-    val ourView = orig.stagedView.count(_%2==0)
+    val ourView = orig.stagedView.count(_ % 2 == 0)
     ourView must beEqualTo(scalaView)
   }
 
@@ -47,6 +50,27 @@ object ViewSpec extends Specification {
     val orig = (1 to 20).to[scala.collection.mutable.Set]
     val scalaView = orig.view.find(_ % 2 == 0)
     val ourView = orig.stagedView.find(_ % 2 == 0)
+    ourView must beEqualTo(scalaView)
+  }
+
+  def init = {
+    val orig = (1 to 20).to[scala.collection.mutable.ArrayBuffer]
+    val scalaView = orig.view.init.force
+    val ourView = orig.stagedView.init.force
+    ourView must beEqualTo(scalaView)
+  }
+
+  def forall = {
+    val orig = (1 to 20).to[scala.collection.immutable.List]
+    val scalaView = orig.view.forall(_%2 !=3)
+    val ourView = orig.stagedView.forall(_%2 !=3)
+    ourView must beEqualTo(scalaView)
+  }
+
+  def exists = {
+    val orig = (1 to 20).to[Vector]
+    val scalaView = orig.view.exists(_ == 10)
+    val ourView = orig.stagedView.exists(_==10)
     ourView must beEqualTo(scalaView)
   }
 }

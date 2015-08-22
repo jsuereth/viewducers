@@ -37,9 +37,11 @@ abstract class StagedCollectionOps[E] {
   // Staging operations, TODO - document them.
 
   /** Create new view by composing current fold transformer with a new one */
-  final def andThen[C](t: Transducer[E, C]): StagedCollectionOps[C] =
+  final def andThen[C](t: Transducer[E, C]): StagedCollectionOps[C] = {
     // TODO - should we always optimise the ops tree here?
-    new SimpleStagedCollectionOps(source, (ops andThen t))
+    if(ops.isInstanceOf[IdentityTransducer[_]]) new SimpleStagedCollectionOps(source, t.asInstanceOf[Transducer[SourceElement, C]])
+    else new SimpleStagedCollectionOps(source, (ops andThen t))
+  }
   final def map[B](f: E => B): StagedCollectionOps[B] = andThen(Transducer.map(f))
   final def collect[B](f: PartialFunction[E,B]): StagedCollectionOps[B] = andThen(Transducer.collect(f))
   final def flatMap[B](f: E => GenTraversableOnce[B]) = andThen(Transducer.flatMap(f))
@@ -52,6 +54,7 @@ abstract class StagedCollectionOps[E] {
   final def zipWithIndex: StagedCollectionOps[(E, Int)] = andThen(Transducer.zipWithIndex[E])
   final def takeWhile(f: E => Boolean) = andThen(Transducer.takeWhile(f))
   final def dropWhile(f: E => Boolean) = andThen(Transducer.dropWhile(f))
+  final def init = andThen(Transducer.init)
   // TODO - zip.... may not be possible to do correctly.....
 
 
@@ -62,19 +65,25 @@ abstract class StagedCollectionOps[E] {
 
   /** Note - this will consume the traversable. */
   final def foldLeft_![Accumulator](acc: Accumulator)(f: (Accumulator, E) => Accumulator): Accumulator =
+    // Note: We have tried to re-order operations here, and the cost of doing so is far outweighed by the raw computation.
     Transducer.withEarlyExit {
       source.foldLeft(acc)(ops.apply(f))
     }
 
   final def find_!(f: E => Boolean): Option[E] =
-    // TODO - see if we can early exit...
+    // TODO - Check if early exit is supported...
     foldLeft_!(Option.empty[E]) {
-      case (None, element) => if (f(element)) Some(element) else None
+      case (None, element) => if (f(element)) Transducer.earlyExit(Some(element)) else None
       case (result, _) => result
     }
-  final def size_! =
+  final def size_! : Int =
     if(isTraversableAgain && !hasStagedOperations) source.size
     else foldLeft_!(0)(Types.countingFold)
+
+  final def isEmpty_! : Boolean =
+    if(isTraversableAgain && !hasStagedOperations) source.isEmpty
+    else size_! != 0
+
   final def to_![Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = {
     val builder = cbf()
     // TODO - Ideally we'd like a *fast* way to know if we can send a size hint to the builder.
@@ -89,7 +98,10 @@ object StagedCollectionOps {
   def apply[E](collection: GenTraversableOnce[E]): StagedCollectionOps[E] =
     new SimpleStagedCollectionOps[E, E](collection, IdentityTransducer[E]())
 }
-/** A simple implementation of StagedCollectionOps with no frills. */
+/** A simple implementation of StagedCollectionOps with no frills.
+  *
+  * We use this class to *hide* the original source element type from the type signatures.
+  */
 private[collections] final class SimpleStagedCollectionOps[Origin, Next](
   override val source: GenTraversableOnce[Origin],
   override val ops: Transducer[Origin, Next]
