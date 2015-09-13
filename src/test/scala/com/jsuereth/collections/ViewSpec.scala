@@ -17,6 +17,7 @@ object ViewSpec extends Specification {
           take init                  $init
           forall test                $forall
           exists test                $exists
+          flatMap elements           $flatMap
   """
 
   def count = {
@@ -38,6 +39,13 @@ object ViewSpec extends Specification {
     val scalaView = orig.view.flatten.force
     val ourView = orig.stagedView.flatten.force
     ourView must beEqualTo(scalaView)
+  }
+
+  def flatMap = {
+    val orig = Vector(1,2,3)
+    val scalaView = orig.view.flatMap(x => (1 to x).toVector.view).force
+    val ourView = orig.stagedView.flatMap(x => (1 to x).toVector.stagedView).force
+    scalaView must beEqualTo(ourView)
   }
 
   def drop = {
