@@ -1,8 +1,10 @@
 package com.jsuereth.collections
 
 import scala.annotation.unchecked.{uncheckedVariance => uV}
-import scala.collection.{GenTraversableOnce, GenTraversable}
+import scala.collection.immutable.IndexedSeq
+import scala.collection._
 import scala.collection.generic.CanBuildFrom
+import scala.collection.mutable.ArrayBuffer
 import scala.language.implicitConversions
 
 
@@ -13,7 +15,7 @@ import scala.language.implicitConversions
   * @tparam E  The elements in the collection.
   * @tparam To The resulting collection type of the staged operations acrued so far.
   */
-abstract class View[E, To] {
+abstract class View[E, To] extends GenTraversableOnce[E] {
   /** The underlying implementation of the original collection.
     *
     * We need this type to have existed at one time, but we no longer care what it is.
@@ -103,12 +105,57 @@ abstract class View[E, To] {
   }
   final def reduce[A1 >: E](op: (A1, A1) => A1): A1 = reduceLeft(op)
   final def aggregate[B](z: =>B)(seqop: (B, E) => B, combop: (B, B) => B): B = foldLeft(z)(seqop)
-  def min[B >: E](implicit cmp: Ordering[B]): E =
+  final def min[B >: E](implicit cmp: Ordering[B]): E =
     reduceLeftOption((x, y) => if (cmp.lteq(x, y)) x else y).getOrElse(throw new UnsupportedOperationException("empty.min"))
-
-  def max[B >: E](implicit cmp: Ordering[B]): E = {
+  final def max[B >: E](implicit cmp: Ordering[B]): E = {
     reduceLeftOption((x, y) => if (cmp.gteq(x, y)) x else y).getOrElse(throw new UnsupportedOperationException("empty.max"))
   }
+  final def maxBy[B](f: (E) => B)(implicit cmp: Ordering[B]): E =
+    foldLeft[Option[(E, B)]](None) { (prev, el) =>
+      prev match {
+        case None => Some(el -> f(el))
+        case Some((el1, value)) =>
+          val newVal = f(el)
+          if(cmp.gteq(value, newVal)) Some(el1 -> value)
+          else Some(el -> newVal)
+      }
+    }.map(_._1).getOrElse(throw new UnsupportedOperationException("empty.maxBy"))
+  final def minBy[B](f: (E) => B)(implicit cmp: Ordering[B]): E = {
+    foldLeft[Option[(E, B)]](None) { (prev, el) =>
+      prev match {
+        case None => Some(el -> f(el))
+        case Some((el1, value)) =>
+          val newVal = f(el)
+          if(cmp.lteq(value, newVal)) Some(el1 -> value)
+          else Some(el -> newVal)
+      }
+    }.map(_._1).getOrElse(throw new UnsupportedOperationException("empty.minBy"))
+  }
+  final def foreach[U](f: (E) => U): Unit = foldLeft(()) { (ignore, el) => f(el) }
+  final def /:[B](z: B)(op: (B, E) => B): B = foldLeft(z)(op)
+  final def hasDefiniteSize: Boolean =
+    underlying.hasDefiniteSourceSize && !underlying.hasStagedOperations
+
+
+  final def reduceOption[A1 >: E](op: (A1, A1) => A1): Option[A1] = reduceLeftOption(op)
+  final def reduceRightOption[B >: E](op: (E, B) => B): Option[B] =
+    foldRight[Option[B]](None) { case (el, acc) =>
+      acc match {
+        case None => Some(el)
+        case Some(el2) => Some(op(el, el2))
+      }
+    }
+  final def foldRight[B](z: B)(op: (E, B) => B): B =
+    // TODO - maybe a faster version?  We *may* be able to have the transducers support foldRight semantics...
+    toStream.foldRight(z)(op)
+  final def reduceRight[B >: E](op: (E, B) => B): B =
+      reduceRightOption(op).getOrElse(throw new UnsupportedOperationException("empty.reduceRight"))
+  final def :\[B](z: B)(op: (E, B) => B): B = foldRight(z)(op)
+
+  final def nonEmpty: Boolean =
+    if(hasDefiniteSize) !isEmpty
+    else size > 0
+
 
   // TODO - less bytecode heavy mechanism here.
   final def forall(p: E => Boolean): Boolean = {
@@ -129,6 +176,43 @@ abstract class View[E, To] {
   final def isEmpty: Boolean = underlying.isEmpty_!
   final def size: Int = underlying.size_!
   final def to[Col[_]](implicit cbf: CanBuildFrom[Nothing, E, Col[E @uV]]): Col[E @uV] = underlying.to_![Col]
+  final def toSet[A1 >: E]: GenSet[A1] = to[immutable.Set].asInstanceOf[GenSet[A1]]
+  final def toSeq: GenSeq[E] = toList
+
+  final def toBuffer[A1 >: E]: mutable.Buffer[A1] = to[ArrayBuffer].asInstanceOf[mutable.Buffer[A1]]
+  final def toStream: Stream[E] = toBuffer.toStream
+  final def toArray[A1 >: E](implicit evidence$1: ClassManifest[A1]): Array[A1] = toBuffer.toArray
+  final def toIterator: Iterator[E] = toBuffer.iterator
+  final def toVector: Vector[E] = to[Vector]
+  final def toList: List[E] = to[List]
+  final def toMap[K, V](implicit ev: <:<[E, (K, V)]): GenMap[K, V] = {
+    val b = immutable.Map.newBuilder[K, V]
+    for (x <- this) b += x
+    b.result()
+  }
+  final  def seq: scala.TraversableOnce[E] = toBuffer
+  final def toIndexedSeq: IndexedSeq[E] = toVector
+  final def toIterable: GenIterable[E] = toBuffer
+  final def toTraversable: GenTraversable[E] =
+    // TODO - Return this
+    toBuffer
+  final def copyToArray[B >: E](xs: Array[B]): Unit =  copyToArray(xs, 0, xs.length)
+  final def copyToArray[B >: E](xs: Array[B], start: Int): Unit = copyToArray(xs, start, xs.length - start)
+  final def copyToArray[B >: E](xs: Array[B], start: Int, len: Int): Unit = {
+    // TODO - We could probably use "take" and foreach/zipWithIndex if we wanted.
+    var i = start
+    val end = (start + len) min xs.length
+    import util.control.Breaks._
+    breakable {
+      for (x <- this) {
+        if (i >= end) break
+        xs(i) = x
+        i += 1
+      }
+    }
+  }
+
+
 
   // SUmmation/addition things.
   final def sum[B >: E](implicit num: Numeric[B]): B = foldLeft(num.zero)(num.plus)
@@ -137,35 +221,8 @@ abstract class View[E, To] {
 
   final def mkString(start: String, sep: String, end: String): String =
     addString(new StringBuilder(), start, sep, end).toString
-
   final def mkString(sep: String): String = mkString("", sep, "")
-
   final def mkString: String = mkString("")
-
-  /** Appends all elements of this $coll to a string builder using start, end, and separator strings.
-    *  The written text begins with the string `start` and ends with the string `end`.
-    *  Inside, the string representations (w.r.t. the method `toString`)
-    *  of all elements of this $coll are separated by the string `sep`.
-    *
-    * Example:
-    *
-    * {{{
-    *      scala> val a = List(1,2,3,4)
-    *      a: List[Int] = List(1, 2, 3, 4)
-    *
-    *      scala> val b = new StringBuilder()
-    *      b: StringBuilder =
-    *
-    *      scala> a.addString(b , "List(" , ", " , ")")
-    *      res5: StringBuilder = List(1, 2, 3, 4)
-    * }}}
-    *
-    *  @param  b    the string builder to which elements are appended.
-    *  @param start the starting string.
-    *  @param sep   the separator string.
-    *  @param end   the ending string.
-    *  @return      the string builder `b` to which elements were appended.
-    */
   def addString(b: StringBuilder, start: String, sep: String, end: String): StringBuilder = {
     var first = true
     b append start
