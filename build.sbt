@@ -6,13 +6,24 @@ def commonSettings = Seq(
   isSnapshot := true,
   scalaVersion := "2.11.6",
   resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-  libraryDependencies += "org.specs2" %% "specs2-core" % "2.4.14" % "test"
+  libraryDependencies += "org.scalatest" %%% "scalatest" % "3.0.0-M9" % "test"
 )
 
+lazy val root =
+  (project in file(".")).aggregate(
+    viewductionJVM, viewductionJS
+  ).settings(
+    publishTo := None,
+    publishLocal := ()
+  )
+
 lazy val viewduction =
-  (project in file(".")).settings(
+  (crossProject.crossType(CrossType.Pure) in file(".")).settings(
     name := "viewduction"
   ).settings(commonSettings:_*)
+
+lazy val viewductionJVM = viewduction.jvm
+lazy val viewductionJS = viewduction.js
 
 lazy val benchmarks =
   (project in file("benchmark")).settings(
@@ -21,9 +32,4 @@ lazy val benchmarks =
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
     logBuffered := false,
     parallelExecution in Test := false
-  ).settings(commonSettings:_*).dependsOn(viewduction)
-
-
-
-
-
+  ).settings(commonSettings:_*).dependsOn(viewductionJVM)
