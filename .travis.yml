@@ -1,0 +1,9 @@
+sudo: false
+language: scala
+script:
+  - sbt test
+jdk:
+  - openjdk7
+notifications:
+  email:
+    - joshua.suereth@typesafe.com
