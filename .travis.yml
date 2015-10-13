@@ -2,7 +2,7 @@ language: scala
 script:
   - sbt test
 jdk:
-  - openjdk8
+  - openjdk7
 notifications:
   email:
     - joshua.suereth@typesafe.com
