@@ -1,0 +1,8 @@
+language: scala
+script:
+  - sbt test
+jdk:
+  - openjdk8
+notifications:
+  email:
+    - joshua.suereth@typesafe.com

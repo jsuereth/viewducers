@@ -14,7 +14,9 @@ lazy val root =
     viewductionJVM, viewductionJS
   ).settings(
     publishTo := None,
-    publishLocal := ()
+    publishLocal := (),
+    sources in Compile := Nil,
+    sources in Test := Nil
   )
 
 lazy val viewduction =
